@@ -19,7 +19,6 @@ import java.net.Socket;
 import java.net.URLDecoder;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
-import java.security.SecureRandom;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
@@ -29,10 +28,8 @@ class HttpServer extends Thread {
     static final int PORT = 8080;
 
     private final Context ctx;
-    private final String token;
     private volatile ServerSocket ss;
     private volatile boolean alive = true;
-    private volatile long sessionPinVersion = -1;
     private int fails;
     private long lockedUntil;
 
@@ -40,11 +37,6 @@ class HttpServer extends Thread {
         super("phonedesk-http");
         ctx = c;
         setDaemon(true);
-        byte[] r = new byte[24];
-        new SecureRandom().nextBytes(r);
-        StringBuilder sb = new StringBuilder();
-        for (byte x : r) sb.append(String.format(Locale.US, "%02x", x));
-        token = sb.toString();
     }
 
     @Override
@@ -123,7 +115,6 @@ class HttpServer extends Thread {
             case "/index.html":
                 send(out, 200, "text/html; charset=utf-8", asset("index.html"), null); return;
             case "/logout":
-                sessionPinVersion = -1;
                 send(out, 303, "text/plain", new byte[0], "Location: /\r\nSet-Cookie: pd=; Path=/; Max-Age=0\r\n"); return;
             case "/stream": stream(out); return;
             case "/frame.jpg": {
@@ -169,10 +160,10 @@ class HttpServer extends Thread {
     // ------------------------------------------------------------------ auth
     private boolean authed(Req r) {
         String cookie = r.h.get("cookie");
-        if (cookie == null || sessionPinVersion != Pin.version(ctx)) return false;
+        if (cookie == null) return false;
+        String token = Pin.token(ctx);
         for (String part : cookie.split(";")) {
-            String kv = part.trim();
-            if (kv.equals("pd=" + token)) return true;
+            if (part.trim().equals("pd=" + token)) return true;
         }
         return false;
     }
@@ -192,9 +183,11 @@ class HttpServer extends Thread {
             else if (++fails >= 5) { fails = 0; lockedUntil = now + 60_000; }
         }
         if (good) {
-            sessionPinVersion = Pin.version(ctx);
+            // "remember" -> 30-day cookie that survives app restarts (token is persisted,
+            // rotated only when the PIN changes). Otherwise a session cookie.
+            String age = "1".equals(nz(form.get("remember"))) ? "; Max-Age=2592000" : "";
             send(out, 303, "text/plain", new byte[0],
-                    "Location: /\r\nSet-Cookie: pd=" + token + "; Path=/; HttpOnly; SameSite=Strict\r\n");
+                    "Location: /\r\nSet-Cookie: pd=" + Pin.token(ctx) + "; Path=/; HttpOnly; SameSite=Strict" + age + "\r\n");
         } else {
             send(out, 303, "text/plain", new byte[0], "Location: /?bad=1\r\n");
         }

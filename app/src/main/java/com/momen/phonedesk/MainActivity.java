@@ -76,9 +76,12 @@ public class MainActivity extends Activity {
                 "1. Tap Start remote access and allow screen capture.\n" +
                 "2. Enable \"PhoneDesk remote touch\" in Accessibility so taps work.\n" +
                 "   If it is greyed out (Android 13+): Settings → Apps → PhoneDesk → ⋮ → Allow restricted settings.\n" +
-                "3. On your PC open the http:// address above (same Wi-Fi, or the Tailscale 100.x address from anywhere) and enter the PIN.\n\n" +
+                "3. On the controlling device (PC or another phone) open one of the http:// addresses above and enter the PIN.\n" +
+                "   Tick \"Remember this device\" on the login page to auto-connect next time.\n\n" +
+                "Same Wi-Fi: use the Wi-Fi address.\n" +
+                "From another network / mobile data: install Tailscale (free) on BOTH devices, sign in with the same account, then use the Tailscale 100.x address — it works from anywhere, phone-to-phone too.\n\n" +
                 "Browser controls: click = tap, hold = long-press, drag = swipe, wheel = scroll, right-click = Back.\n\n" +
-                "A notification is always shown while access is on. Tap Stop (here or in the notification) to end it.",
+                "The connection stays up when the screen turns off. A notification is always shown while access is on; tap Stop to end it.",
                 14, false);
         help.setTextColor(Color.DKGRAY);
         root.addView(help);
@@ -140,12 +143,15 @@ public class MainActivity extends Activity {
         status.setTextColor(on ? Color.rgb(0, 140, 60) : Color.GRAY);
         shareBtn.setText(on ? "■  Stop remote access" : "▶  Start remote access");
 
+        java.util.List<String[]> addrs = Net.addresses();
+        // Show VPN / Tailscale first — that is the address that works from another network.
+        addrs.sort((x, y) -> Integer.compare(rank(y[1]), rank(x[1])));
         StringBuilder sb = new StringBuilder("Open in your browser:\n");
-        for (String[] a : Net.addresses()) {
+        for (String[] a : addrs) {
             sb.append("  http://").append(a[0]).append(':').append(HttpServer.PORT)
               .append("   (").append(a[1]).append(")\n");
         }
-        if (Net.addresses().isEmpty()) sb.append("  (no network – connect to Wi-Fi)\n");
+        if (addrs.isEmpty()) sb.append("  (no network – connect to Wi-Fi)\n");
         address.setText(sb);
         pinView.setText("PIN: " + Pin.get(this));
 
@@ -173,6 +179,13 @@ public class MainActivity extends Activity {
         t.setTextSize(sp);
         if (bold) t.setTypeface(Typeface.DEFAULT_BOLD);
         return t;
+    }
+
+    private static int rank(String label) {
+        if (label.contains("Tailscale") || label.contains("VPN")) return 3;
+        if (label.equals("Wi-Fi")) return 2;
+        if (label.equals("hotspot")) return 1;
+        return 0;
     }
 
     private int dp(int v) { return Math.round(v * getResources().getDisplayMetrics().density); }

@@ -13,20 +13,39 @@
         border-radius:8px;border:1px solid #2c3d5e;background:#0f1724;color:#fff}
   button{margin-top:16px;width:100%;padding:12px;font-size:16px;border:0;border-radius:8px;background:#1e6fd9;color:#fff;cursor:pointer}
   .err{color:#ff7b7b;font-size:14px;margin-top:12px;min-height:18px}
+  .rem{display:flex;gap:8px;align-items:center;margin-top:14px;color:#9fb0c8;font-size:13px;cursor:pointer}
+  .rem input{width:auto;font-size:14px}
 </style>
 </head>
 <body>
-<form method="POST" action="/login">
+<form method="POST" action="/login" id="f">
   <h1>PhoneDesk</h1>
   <p>Enter the 6-digit PIN shown in the PhoneDesk app on your phone.</p>
-  <input name="pin" inputmode="numeric" autocomplete="off" maxlength="6" autofocus required>
+  <input name="pin" id="pin" inputmode="numeric" autocomplete="off" maxlength="6" autofocus required>
+  <label class="rem"><input type="checkbox" name="remember" id="rem" value="1"> Remember this device (auto-connect)</label>
   <button type="submit">Connect</button>
   <div class="err" id="err"></div>
 </form>
 <script>
   const q = new URLSearchParams(location.search);
-  if (q.has('bad')) document.getElementById('err').textContent = 'Wrong PIN.';
-  if (q.has('locked')) document.getElementById('err').textContent = 'Too many attempts – wait 1 minute.';
+  const err = document.getElementById('err');
+  const bad = q.has('bad');
+  if (bad) err.textContent = 'Wrong PIN.';
+  if (q.has('locked')) err.textContent = 'Too many attempts – wait 1 minute.';
+
+  // If this device was remembered, prefill the PIN and auto-connect.
+  const saved = localStorage.getItem('pd_pin');
+  if (saved) {
+    document.getElementById('pin').value = saved;
+    document.getElementById('rem').checked = true;
+    if (bad) { localStorage.removeItem('pd_pin'); }      // stale PIN – stop looping
+    else if (!q.has('locked')) { setTimeout(() => document.getElementById('f').submit(), 150); }
+  }
+  document.getElementById('f').addEventListener('submit', () => {
+    if (document.getElementById('rem').checked)
+      localStorage.setItem('pd_pin', document.getElementById('pin').value.trim());
+    else localStorage.removeItem('pd_pin');
+  });
 </script>
 </body>
 </html>

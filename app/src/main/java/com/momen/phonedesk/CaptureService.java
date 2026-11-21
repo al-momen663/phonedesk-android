@@ -16,6 +16,7 @@ import android.media.Image;
 import android.media.ImageReader;
 import android.media.projection.MediaProjection;
 import android.media.projection.MediaProjectionManager;
+import android.net.wifi.WifiManager;
 import android.os.Build;
 import android.os.Handler;
 import android.os.HandlerThread;
@@ -49,6 +50,7 @@ public class CaptureService extends Service {
     private HttpServer server;
     private Bitmap bmp;
     private PowerManager.WakeLock wake;
+    private WifiManager.WifiLock wifiLock;
 
     @Override public IBinder onBind(Intent i) { return null; }
 
@@ -92,6 +94,17 @@ public class CaptureService extends Service {
         PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
         wake = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "phonedesk:server");
         wake.acquire();
+
+        // Keep the Wi-Fi radio fully on so the server stays reachable with the screen off.
+        WifiManager wm = (WifiManager) getApplicationContext().getSystemService(WIFI_SERVICE);
+        if (wm != null) {
+            int mode = Build.VERSION.SDK_INT >= 29
+                    ? WifiManager.WIFI_MODE_FULL_LOW_LATENCY
+                    : WifiManager.WIFI_MODE_FULL_HIGH_PERF;
+            wifiLock = wm.createWifiLock(mode, "phonedesk:wifi");
+            wifiLock.setReferenceCounted(false);
+            wifiLock.acquire();
+        }
 
         running = true;
         return START_NOT_STICKY;
@@ -200,6 +213,7 @@ public class CaptureService extends Service {
         if (reader != null) reader.close();
         if (thread != null) thread.quitSafely();
         if (wake != null && wake.isHeld()) wake.release();
+        if (wifiLock != null && wifiLock.isHeld()) wifiLock.release();
         synchronized (FRAME_LOCK) { frame = null; FRAME_LOCK.notifyAll(); }
         super.onDestroy();
     }
