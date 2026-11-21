@@ -16,6 +16,8 @@ import android.os.Looper;
 import android.provider.Settings;
 import android.view.View;
 import android.widget.Button;
+import android.widget.CheckBox;
+import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -24,8 +26,10 @@ import android.widget.Toast;
 public class MainActivity extends Activity {
     private static final int REQ_CAPTURE = 42;
 
-    private TextView status, address, pinView, perms;
+    private TextView status, address, pinView, perms, remoteStatus, remoteUrl;
     private Button shareBtn;
+    private EditText relayInput, secretInput;
+    private CheckBox remoteChk;
     private final Handler ui = new Handler(Looper.getMainLooper());
     private final Runnable tick = new Runnable() {
         @Override public void run() { refresh(); ui.postDelayed(this, 1500); }
@@ -70,6 +74,38 @@ public class MainActivity extends Activity {
         perms = text("", 15, false);
         perms.setPadding(0, dp(16), 0, dp(8));
         root.addView(perms);
+
+        // ---- Internet (relay) access ----
+        TextView rh = text("Internet access (from any network)", 17, true);
+        rh.setPadding(0, dp(18), 0, dp(4));
+        root.addView(rh);
+        root.addView(text("Deploy the relay (see repo /relay) on a free host, paste its https URL here. "
+                + "Then the phone is reachable from anywhere — no Tailscale, no port-forwarding.", 13, false));
+
+        relayInput = new EditText(this);
+        relayInput.setHint("https://your-relay.onrender.com");
+        relayInput.setText(Config.relayBase(this));
+        relayInput.setSingleLine(true);
+        root.addView(relayInput);
+
+        secretInput = new EditText(this);
+        secretInput.setHint("Relay secret (RELAY_SECRET, optional)");
+        secretInput.setText(Config.relaySecret(this));
+        secretInput.setSingleLine(true);
+        root.addView(secretInput);
+
+        remoteChk = new CheckBox(this);
+        remoteChk.setText("Enable internet access");
+        remoteChk.setChecked(Config.remoteOn(this));
+        root.addView(remoteChk);
+
+        root.addView(button("Save & connect relay", v -> saveRelay()));
+
+        remoteStatus = text("", 14, false);
+        root.addView(remoteStatus);
+        remoteUrl = text("", 14, false);
+        remoteUrl.setTextIsSelectable(true);
+        root.addView(remoteUrl);
 
         TextView help = text(
                 "How to use\n" +
@@ -117,6 +153,20 @@ public class MainActivity extends Activity {
         }
     }
 
+    private void saveRelay() {
+        Config.setRelayBase(this, relayInput.getText().toString());
+        Config.setRelaySecret(this, secretInput.getText().toString());
+        Config.setRemoteOn(this, remoteChk.isChecked());
+        CaptureService cs = CaptureService.self;
+        if (cs != null) {
+            cs.restartTunnel();
+            toast("Saved. Connecting to relay…");
+        } else {
+            toast("Saved. Starts when you turn on remote access.");
+        }
+        refresh();
+    }
+
     private void openAccessibility() {
         startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS));
         toast("Find \"PhoneDesk remote touch\" and turn it on");
@@ -159,6 +209,13 @@ public class MainActivity extends Activity {
                 "Screen sharing: " + (on ? "✔ on" : "✘ off") + "\n" +
                 "Remote touch:   " + (ControlService.instance != null ? "✔ enabled" : "✘ not enabled") + "\n" +
                 "File access:    " + (Files.allowed(this) ? "✔ allowed" : "✘ not allowed"));
+
+        if (remoteStatus != null) {
+            boolean cfg = Config.remoteOn(this) && !Config.relayBase(this).isEmpty();
+            remoteStatus.setText("Relay: " + (cfg ? TunnelClient.state : "off"));
+            String url = Config.browserUrl(this);
+            remoteUrl.setText(url.isEmpty() ? "" : "From anywhere, open:\n" + url);
+        }
     }
 
     private Button button(String t, View.OnClickListener l) {

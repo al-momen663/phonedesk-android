@@ -5,6 +5,7 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
+import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ServiceInfo;
 import android.content.res.Configuration;
@@ -48,6 +49,7 @@ public class CaptureService extends Service {
     private HandlerThread thread;
     private Handler handler;
     private HttpServer server;
+    private TunnelClient tunnel;
     private Bitmap bmp;
     private PowerManager.WakeLock wake;
     private WifiManager.WifiLock wifiLock;
@@ -90,6 +92,8 @@ public class CaptureService extends Service {
 
         server = new HttpServer(getApplicationContext());
         server.start();
+
+        startTunnel();
 
         PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
         wake = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "phonedesk:server");
@@ -144,6 +148,22 @@ public class CaptureService extends Service {
 
     static volatile CaptureService self;
     @Override public void onCreate() { super.onCreate(); self = this; }
+
+    private void startTunnel() {
+        Context app = getApplicationContext();
+        if (!Config.remoteOn(app) || Config.relayBase(app).isEmpty()) {
+            TunnelClient.state = "off";
+            return;
+        }
+        tunnel = new TunnelClient(app, Config.relayBase(app), Config.deviceId(app), Config.relaySecret(app));
+        tunnel.start();
+    }
+
+    /** Called from the UI when relay settings change while sharing is live. */
+    void restartTunnel() {
+        if (tunnel != null) { tunnel.stop(); tunnel = null; }
+        startTunnel();
+    }
 
     @Override
     public void onConfigurationChanged(Configuration c) {
@@ -207,6 +227,7 @@ public class CaptureService extends Service {
     public void onDestroy() {
         running = false;
         self = null;
+        if (tunnel != null) tunnel.stop();
         if (server != null) server.shutdown();
         if (display != null) display.release();
         if (projection != null) { try { projection.stop(); } catch (Exception ignored) { } }
