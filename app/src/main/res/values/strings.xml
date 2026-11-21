@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">PhoneDesk</string>
+    <string name="a11y_label">PhoneDesk remote touch</string>
+    <string name="a11y_desc">Lets PhoneDesk perform taps, swipes, Back/Home and type text when YOU control this phone from your browser. Nothing is collected or sent anywhere.</string>
+</resources>
